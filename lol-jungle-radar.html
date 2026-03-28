@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>LoL 정글 레이더 ⚡</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#070c14;--bg2:#0d1520;--bg3:#121d2e;
+  --border:#1a2d42;--border2:#2a4060;
+  --gold:#c89b3c;--gold-dim:#7a5f24;--gold-light:#f0e0a0;
+  --blue:#4fc3f7;--teal:#1edb8c;--red:#e84057;--red-dim:#6b1d2a;
+  --text:#c8d5e8;--dim:#4a6080;
+  --font:'Rajdhani','Segoe UI',sans-serif;
+  --mono:'Share Tech Mono','Courier New',monospace;
+}
+
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px;min-height:100vh;overflow-x:hidden}
+
+/* ── LOADING ── */
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;z-index:9999}
+.load-logo{font-size:36px;font-weight:700;color:var(--gold);letter-spacing:6px}
+.load-logo span{color:var(--dim);font-weight:400}
+.load-sub{font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:2px}
+.load-bar{width:220px;height:2px;background:var(--border2);border-radius:1px;overflow:hidden}
+.load-fill{height:100%;background:var(--gold);animation:loading 2.2s ease-in-out forwards}
+@keyframes loading{from{width:0}to{width:100%}}
+
+/* ── ALERT FLASH ── */
+#flash{position:fixed;top:0;left:0;right:0;padding:12px 20px;color:#fff;text-align:center;font-weight:700;font-size:15px;letter-spacing:2px;z-index:9998;transform:translateY(-100%);transition:transform 0.25s ease;pointer-events:none}
+#flash.show{transform:translateY(0)}
+
+/* ── HEADER ── */
+header{background:var(--bg2);border-bottom:1px solid var(--gold-dim);padding:10px 16px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100}
+.logo{font-size:18px;font-weight:700;color:var(--gold);letter-spacing:3px;text-transform:uppercase;white-space:nowrap}
+.logo span{color:var(--dim);font-weight:400}
+.version-tag{font-family:var(--mono);font-size:10px;color:var(--dim);border:1px solid var(--border2);padding:2px 6px;border-radius:2px}
+
+.badge{display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:3px;font-size:11px;font-family:var(--mono);letter-spacing:1px;margin-left:auto;color:var(--dim);transition:all 0.3s}
+.badge.active{border-color:var(--teal);color:var(--teal)}
+.badge.alert{border-color:var(--red);color:var(--red)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.badge.active .dot{animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.25}}
+
+/* ── LAYOUT ── */
+.grid{display:grid;grid-template-columns:1fr 310px;height:calc(100vh - 48px);overflow:hidden}
+
+/* ── LEFT PANEL (Camera) ── */
+.cam-panel{display:flex;flex-direction:column;border-right:1px solid var(--border)}
+.cam-view{position:relative;flex:1;background:#000;overflow:hidden}
+#camCanvas{width:100%;height:100%;display:block;object-fit:contain}
+
+.cam-overlay{position:absolute;inset:0;pointer-events:none}
+.scan-line{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent 0%,var(--teal) 40%,var(--teal) 60%,transparent 100%);opacity:0;transition:opacity 0.3s}
+.scanning .scan-line{opacity:0.5;animation:scanY 2s linear infinite}
+@keyframes scanY{0%{top:0}100%{top:100%}}
+
+.cam-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--dim);pointer-events:none}
+.cam-placeholder .icon{font-size:52px;opacity:0.5}
+.cam-placeholder p{font-family:var(--mono);font-size:12px;letter-spacing:1px}
+
+#setup-hint{position:absolute;inset:0;background:rgba(0,0,0,0.55);display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;pointer-events:none}
+#setup-hint.show{display:flex}
+.hint-box{border:1px solid var(--blue);padding:16px 24px;text-align:center;background:rgba(7,12,20,0.9)}
+.hint-box h3{color:var(--blue);font-size:13px;letter-spacing:2px;margin-bottom:6px}
+.hint-box p{font-family:var(--mono);font-size:11px;color:var(--dim)}
+
+.zone-label{position:absolute;bottom:8px;left:8px;background:rgba(7,12,20,0.85);border:1px solid var(--border2);padding:4px 10px;font-family:var(--mono);font-size:11px;color:var(--dim);pointer-events:none;transition:all 0.3s;opacity:0}
+.zone-label.show{opacity:1;color:var(--gold)}
+
+/* Score bars */
+#score-bars{padding:8px 12px;border-top:1px solid var(--border);background:var(--bg2);display:none}
+.sbar-title{font-size:10px;font-family:var(--mono);color:var(--dim);letter-spacing:1.5px;margin-bottom:6px}
+.sbar-row{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.sbar-name{font-size:11px;font-family:var(--mono);color:var(--dim);width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sbar-track{flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.sbar-fill{height:100%;border-radius:2px;transition:width 0.4s ease}
+.sbar-val{font-size:11px;font-family:var(--mono);width:34px;text-align:right}
+
+/* Camera controls */
+.cam-controls{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border);background:var(--bg2);flex-wrap:wrap}
+
+/* ── BUTTONS ── */
+.btn{padding:7px 14px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-family:var(--font);font-weight:600;font-size:13px;letter-spacing:0.8px;cursor:pointer;border-radius:2px;transition:all 0.15s;text-transform:uppercase;white-space:nowrap}
+.btn:hover:not(:disabled){border-color:var(--gold);color:var(--gold)}
+.btn:active:not(:disabled){transform:scale(0.97)}
+.btn.primary{background:var(--gold-dim);border-color:var(--gold);color:var(--gold-light)}
+.btn.primary:hover:not(:disabled){background:var(--gold);color:var(--bg)}
+.btn.danger{border-color:var(--red-dim);color:var(--red)}
+.btn.danger:hover:not(:disabled){background:var(--red-dim);border-color:var(--red)}
+.btn.go{background:#0d2a1e;border-color:var(--teal);color:var(--teal)}
+.btn.go:hover:not(:disabled){background:var(--teal);color:var(--bg)}
+.btn.stop{background:var(--red-dim);border-color:var(--red);color:var(--red)}
+.btn:disabled{opacity:0.35;cursor:not-allowed}
+
+/* ── RIGHT COLUMN ── */
+.right-col{display:flex;flex-direction:column;overflow:hidden}
+.panel{border-bottom:1px solid var(--border)}
+.ph{padding:9px 14px;border-bottom:1px solid var(--border);font-size:10px;font-family:var(--mono);letter-spacing:2px;color:var(--gold);text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.ph::before{content:'';display:block;width:3px;height:11px;background:var(--gold)}
+
+/* Champion search */
+.champ-search{padding:10px}
+.search-wrap{position:relative}
+.search-input{width:100%;padding:8px 12px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);font-family:var(--font);font-size:14px;border-radius:2px;outline:none}
+.search-input:focus{border-color:var(--gold)}
+.search-input::placeholder{color:var(--dim)}
+
+/* Selected chips */
+.chips-area{padding:6px 10px 8px;border-bottom:1px solid var(--border);min-height:52px}
+.chips-label{font-size:10px;font-family:var(--mono);color:var(--dim);letter-spacing:1px;margin-bottom:5px}
+.chips-list{display:flex;gap:5px;flex-wrap:wrap}
+.chip{display:flex;align-items:center;gap:4px;padding:2px 7px 2px 3px;background:var(--bg3);border:1px solid var(--gold-dim);border-radius:20px;font-size:12px;cursor:pointer;transition:border-color 0.15s}
+.chip:hover{border-color:var(--red)}
+.chip img{width:22px;height:22px;border-radius:50%;object-fit:cover}
+.chip-x{color:var(--dim);font-size:13px;line-height:1;margin-left:2px}
+.chip:hover .chip-x{color:var(--red)}
+.chips-empty{color:var(--dim);font-size:11px;font-family:var(--mono)}
+
+/* Champion grid */
+.champ-grid-wrap{overflow-y:auto;height:200px}
+.champ-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;padding:6px}
+.champ-item{display:flex;flex-direction:column;align-items:center;cursor:pointer;padding:4px 2px;border-radius:3px;border:1px solid transparent;transition:all 0.1s}
+.champ-item:hover{background:var(--bg3);border-color:var(--border2)}
+.champ-item.sel{background:#0d1f12;border-color:var(--gold-dim)}
+.champ-item img{width:42px;height:42px;border-radius:3px;object-fit:cover;border:1px solid var(--border)}
+.champ-item.sel img{border-color:var(--gold)}
+.champ-name{font-size:9px;font-family:var(--mono);color:var(--dim);text-align:center;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%}
+.champ-item.sel .champ-name{color:var(--gold-light)}
+.grid-empty{grid-column:1/-1;text-align:center;padding:16px;color:var(--dim);font-size:12px;font-family:var(--mono)}
+
+/* Settings */
+.settings-body{padding:12px;display:flex;flex-direction:column;gap:11px}
+.srow{display:flex;align-items:center;gap:10px}
+.slabel{font-size:11px;font-family:var(--mono);color:var(--dim);width:84px;flex-shrink:0}
+input[type=range]{flex:1;appearance:none;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:12px;height:12px;background:var(--gold);border-radius:50%;cursor:pointer}
+.sval{font-size:12px;font-family:var(--mono);color:var(--gold);width:36px;text-align:right;flex-shrink:0}
+.toggle-wrap{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.toggle-wrap span{font-size:11px;font-family:var(--mono);color:var(--dim)}
+.tog{position:relative;width:30px;height:17px;display:inline-block}
+.tog input{opacity:0;width:0;height:0;position:absolute}
+.tog-track{position:absolute;inset:0;background:var(--border2);border-radius:9px;transition:0.2s}
+.tog input:checked+.tog-track{background:var(--teal)}
+.tog-track::after{content:'';position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:0.2s}
+.tog input:checked+.tog-track::after{transform:translateX(13px)}
+
+/* Alert log */
+.log-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.alert-log{flex:1;overflow-y:auto;padding:6px}
+.log-entry{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:2px;margin-bottom:2px;font-size:12px;transition:background 0.5s}
+.log-entry.fresh{background:rgba(232,64,87,0.12)}
+.log-time{font-family:var(--mono);font-size:10px;color:var(--dim);flex-shrink:0}
+.log-icon{width:18px;height:18px;border-radius:50%;object-fit:cover;border:1px solid var(--red);flex-shrink:0}
+.log-champ{color:var(--gold);font-weight:700}
+.log-zone{color:var(--text)}
+.log-score{font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:auto;flex-shrink:0}
+.log-empty{padding:16px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:11px;line-height:1.8}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* Mobile */
+@media(max-width:680px){
+  .grid{grid-template-columns:1fr;grid-template-rows:50vh auto;height:auto;overflow:visible}
+  .cam-panel{height:50vh}
+  .right-col{overflow:visible}
+  .champ-grid-wrap{height:180px}
+  .log-panel{min-height:200px}
+}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading">
+  <div class="load-logo">⚡ JUNGLE <span>RADAR</span></div>
+  <div class="load-sub">챔피언 데이터 초기화 중...</div>
+  <div class="load-bar"><div class="load-fill"></div></div>
+</div>
+
+<!-- Alert Flash -->
+<div id="flash"></div>
+
+<!-- Header -->
+<header>
+  <div class="logo">⚡ JUNGLE <span>RADAR</span></div>
+  <div class="version-tag" id="ddver">DD v?</div>
+  <div class="badge" id="badge"><div class="dot"></div><span id="badge-text">대기중</span></div>
+</header>
+
+<div class="grid">
+
+  <!-- LEFT: Camera -->
+  <div class="cam-panel">
+    <div class="cam-view scanning" id="cam-view">
+      <canvas id="camCanvas"></canvas>
+      <div class="cam-overlay">
+        <div class="scan-line"></div>
+        <div class="zone-label" id="zone-lbl"></div>
+      </div>
+
+      <div class="cam-placeholder" id="placeholder">
+        <div class="icon">📡</div>
+        <p>카메라 시작 → 미니맵 영역 설정 → 탐지 시작</p>
+        <p style="font-size:10px;margin-top:4px;opacity:0.6">HTTPS 환경 필요 · 핸드폰 후면 카메라 권장</p>
+      </div>
+
+      <div id="setup-hint">
+        <div class="hint-box">
+          <h3>📍 미니맵 영역 드래그</h3>
+          <p>화면 속 미니맵 위치를 드래그하여 선택하세요</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Debug score bars -->
+    <div id="score-bars">
+      <div class="sbar-title">MATCH CONFIDENCE</div>
+      <div id="sbar-list"></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="cam-controls">
+      <button class="btn primary" id="btn-cam">📷 카메라 시작</button>
+      <button class="btn" id="btn-setup" disabled>🗺 미니맵 설정</button>
+      <button class="btn go" id="btn-detect" disabled style="margin-left:auto">▶ 탐지 시작</button>
+    </div>
+  </div>
+
+  <!-- RIGHT: Controls -->
+  <div class="right-col">
+
+    <!-- Champion picker -->
+    <div class="panel">
+      <div class="ph">적 챔피언 선택<span style="margin-left:auto;color:var(--dim)" id="champ-count">0/5</span></div>
+      <div class="champ-search">
+        <div class="search-wrap">
+          <input class="search-input" id="search" type="text" placeholder="챔피언 검색 (한/영)...">
+        </div>
+      </div>
+      <div class="chips-area">
+        <div class="chips-label">선택된 챔피언 — 클릭하여 제거</div>
+        <div class="chips-list" id="chips"><span class="chips-empty">챔피언을 선택하세요</span></div>
+      </div>
+      <div class="champ-grid-wrap">
+        <div class="champ-grid" id="champ-grid">
+          <div class="grid-empty">로드 중...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="panel">
+      <div class="ph">설정</div>
+      <div class="settings-body">
+        <div class="srow">
+          <div class="slabel">감지 임계값</div>
+          <input type="range" id="s-thresh" min="40" max="95" value="70">
+          <div class="sval" id="v-thresh">0.70</div>
+        </div>
+        <div class="srow">
+          <div class="slabel">템플릿 크기</div>
+          <input type="range" id="s-tsize" min="10" max="50" value="22">
+          <div class="sval" id="v-tsize">22px</div>
+        </div>
+        <div class="srow">
+          <div class="slabel">알림 쿨다운</div>
+          <input type="range" id="s-cool" min="3" max="20" value="7">
+          <div class="sval" id="v-cool">7s</div>
+        </div>
+        <div class="srow">
+          <div class="slabel">음성 알림</div>
+          <label class="toggle-wrap">
+            <label class="tog"><input type="checkbox" id="s-tts" checked><div class="tog-track"></div></label>
+            <span>TTS 활성화</span>
+          </label>
+        </div>
+        <div class="srow">
+          <div class="slabel">디버그</div>
+          <label class="toggle-wrap">
+            <label class="tog"><input type="checkbox" id="s-debug"><div class="tog-track"></div></label>
+            <span>신뢰도 점수 표시</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="log-panel panel" style="border-bottom:none">
+      <div class="ph">알림 로그<button class="btn" onclick="clearLog()" style="margin-left:auto;padding:2px 8px;font-size:10px">지우기</button></div>
+      <div class="alert-log" id="alert-log">
+        <div class="log-empty">탐지가 시작되면<br>여기에 알림이 표시됩니다</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Hidden video + offscreen canvases -->
+<video id="video" autoplay playsinline muted style="display:none"></video>
+<canvas id="proc-canvas" style="display:none"></canvas>
+<canvas id="tmpl-canvas" style="display:none"></canvas>
+
+<script>
+// ══════════════════════════════════════════════════
+// CONFIG & STATE
+// ══════════════════════════════════════════════════
+let DD_VER = '15.6.1';
+let allChamps = [];
+let selected = [];       // {id, korName, template:{data,width,height}, img, score, dx, dy}
+let minimapRect = null;  // {x,y,w,h} in canvas px
+let detecting = false;
+let detTimer = null;
+let lastAlerts = {};     // champId → timestamp
+
+// Settings
+let thresh = 0.70, tplSize = 22, coolMs = 7000, ttsOn = true, debugOn = false;
+
+// Camera
+let stream = null;
+const video   = document.getElementById('video');
+const canvas  = document.getElementById('camCanvas');
+const ctx     = canvas.getContext('2d');
+const pcv     = document.getElementById('proc-canvas');
+const pctx    = pcv.getContext('2d');
+const tcv     = document.getElementById('tmpl-canvas');
+const tctx    = tcv.getContext('2d');
+
+// Setup drag
+let setupMode = false;
+let drag = null;  // {sx,sy,cx,cy}
+
+// ══════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════
+async function init() {
+  try {
+    const r = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
+    const vs = await r.json();
+    if (vs?.[0]) DD_VER = vs[0];
+  } catch {}
+  document.getElementById('ddver').textContent = 'DD v' + DD_VER;
+
+  await loadChamps();
+  bindEvents();
+  document.getElementById('loading').style.display = 'none';
+}
+
+function ddImg(id) {
+  return `https://ddragon.leagueoflegends.com/cdn/${DD_VER}/img/champion/${id}.png`;
+}
+
+// ══════════════════════════════════════════════════
+// CHAMPION DATA
+// ══════════════════════════════════════════════════
+async function loadChamps() {
+  try {
+    const r = await fetch(`https://ddragon.leagueoflegends.com/cdn/${DD_VER}/data/ko_KR/champion.json`);
+    const d = await r.json();
+    allChamps = Object.values(d.data).sort((a,b) => a.name.localeCompare(b.name));
+    renderGrid(allChamps);
+  } catch(e) {
+    document.getElementById('champ-grid').innerHTML =
+      '<div class="grid-empty" style="color:var(--red)">데이터 로드 실패 — 인터넷 연결 확인</div>';
+  }
+}
+
+function renderGrid(list) {
+  const g = document.getElementById('champ-grid');
+  if (!list.length) { g.innerHTML = '<div class="grid-empty">검색 결과 없음</div>'; return; }
+  g.innerHTML = list.map(c => {
+    const isSel = selected.some(s => s.id === c.id);
+    return `<div class="champ-item${isSel?' sel':''}" data-id="${c.id}" onclick="toggleChamp('${c.id}','${c.name}',this)" title="${c.name} — ${c.title}">
+      <img src="${ddImg(c.id)}" alt="${c.name}" loading="lazy"
+        onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 42 42%22><rect width=%2242%22 height=%2242%22 fill=%22%231a2d42%22/><text x=%2221%22 y=%2226%22 text-anchor=%22middle%22 fill=%22%234a6080%22 font-size=%2213%22>?</text></svg>'">
+      <div class="champ-name">${c.name}</div>
+    </div>`;
+  }).join('');
+}
+
+async function toggleChamp(id, korName, el) {
+  const idx = selected.findIndex(s => s.id === id);
+  if (idx >= 0) {
+    selected.splice(idx, 1);
+    el.classList.remove('sel');
+  } else {
+    if (selected.length >= 5) { flash('최대 5명까지 선택 가능합니다', 'warn'); return; }
+    const champ = { id, korName, template: null, img: null, score: 0, dx: 0, dy: 0 };
+    selected.push(champ);
+    el.classList.add('sel');
+    loadImg(ddImg(id)).then(img => {
+      champ.img = img;
+      champ.template = makeTemplate(img);
+    }).catch(() => {});
+  }
+  updateChips();
+  if (debugOn) updateScoreBars();
+}
+
+function loadImg(src) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = src;
+  });
+}
+
+function makeTemplate(img) {
+  const sz = tplSize;
+  tcv.width = sz; tcv.height = sz;
+  tctx.drawImage(img, 0, 0, sz, sz);
+  return toGray(tctx.getImageData(0, 0, sz, sz));
+}
+
+function updateChips() {
+  const c = document.getElementById('chips');
+  document.getElementById('champ-count').textContent = selected.length + '/5';
+  if (!selected.length) {
+    c.innerHTML = '<span class="chips-empty">챔피언을 선택하세요</span>';
+    return;
+  }
+  c.innerHTML = selected.map(s =>
+    `<div class="chip" onclick="removeChamp('${s.id}')" title="${s.korName} 제거">
+      <img src="${ddImg(s.id)}" alt="${s.korName}" onerror="this.style.display='none'">
+      <span>${s.korName}</span><span class="chip-x">×</span>
+    </div>`
+  ).join('');
+}
+
+function removeChamp(id) {
+  const idx = selected.findIndex(s => s.id === id);
+  if (idx >= 0) selected.splice(idx, 1);
+  updateChips();
+  const el = document.querySelector(`[data-id="${id}"]`);
+  if (el) el.classList.remove('sel');
+  if (debugOn) updateScoreBars();
+}
+
+// ══════════════════════════════════════════════════
+// CAMERA
+// ══════════════════════════════════════════════════
+async function startCam() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    video.srcObject = stream;
+    video.onloadedmetadata = () => {
+      canvas.width  = video.videoWidth;
+      canvas.height = video.videoHeight;
+      pcv.width = video.videoWidth;
+      pcv.height = video.videoHeight;
+      startVidLoop();
+      document.getElementById('placeholder').style.display = 'none';
+      document.getElementById('btn-setup').disabled = false;
+      const bc = document.getElementById('btn-cam');
+      bc.textContent = '⏹ 카메라 중지';
+      bc.className = 'btn danger';
+      setStatus('카메라 ON', '');
+    };
+  } catch(e) {
+    alert('카메라 접근 실패: ' + e.message + '\n\n• HTTPS(또는 localhost) 환경에서 열어주세요\n• 브라우저 카메라 권한을 허용해주세요');
+  }
+}
+
+function stopCam() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  stopDetect();
+  cancelAnimationFrame(rafId);
+  document.getElementById('placeholder').style.display = 'flex';
+  document.getElementById('btn-setup').disabled = true;
+  document.getElementById('btn-detect').disabled = true;
+  const bc = document.getElementById('btn-cam');
+  bc.textContent = '📷 카메라 시작';
+  bc.className = 'btn primary';
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  setStatus('대기중', '');
+}
+
+let rafId;
+function startVidLoop() {
+  function loop() {
+    if (!stream) return;
+    ctx.drawImage(video, 0, 0);
+
+    // Draw minimap rect
+    if (minimapRect) {
+      const {x,y,w,h} = minimapRect;
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#c89b3c';
+      ctx.setLineDash([]);
+      ctx.strokeRect(x, y, w, h);
+      // Corner ticks
+      const t = 9;
+      ctx.strokeStyle = '#f0e0a0';
+      ctx.lineWidth = 2;
+      [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]].forEach(([cx,cy,dx,dy]) => {
+        ctx.beginPath(); ctx.moveTo(cx,cy+dy*t); ctx.lineTo(cx,cy); ctx.lineTo(cx+dx*t,cy); ctx.stroke();
+      });
+      // "MINIMAP" label
+      ctx.fillStyle = 'rgba(13,21,32,0.85)';
+      ctx.fillRect(x, y-17, 66, 17);
+      ctx.fillStyle = '#c89b3c';
+      ctx.font = '9px "Share Tech Mono",monospace';
+      ctx.fillText('MINIMAP', x+4, y-5);
+    }
+
+    // Setup drag preview
+    if (setupMode && drag?.cx !== undefined) {
+      const {sx,sy,cx,cy} = drag;
+      const rx = Math.min(sx,cx), ry = Math.min(sy,cy);
+      const rw = Math.abs(cx-sx), rh = Math.abs(cy-sy);
+      ctx.strokeStyle = '#4fc3f7';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5,3]);
+      ctx.strokeRect(rx,ry,rw,rh);
+      ctx.setLineDash([]);
+    }
+
+    rafId = requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+// ══════════════════════════════════════════════════
+// MINIMAP SETUP
+// ══════════════════════════════════════════════════
+function enterSetup() {
+  setupMode = true; drag = null;
+  document.getElementById('setup-hint').classList.add('show');
+  canvas.style.cursor = 'crosshair';
+  setStatus('영역 설정', '');
+}
+function exitSetup() {
+  setupMode = false; drag = null;
+  document.getElementById('setup-hint').classList.remove('show');
+  canvas.style.cursor = '';
+  if (minimapRect) {
+    document.getElementById('btn-detect').disabled = false;
+    setStatus('영역 준비됨', '');
+  }
+}
+
+function canvasXY(e) {
+  const r = canvas.getBoundingClientRect();
+  const sx = canvas.width / r.width, sy = canvas.height / r.height;
+  const cx = e.touches ? e.touches[0].clientX : e.clientX;
+  const cy = e.touches ? e.touches[0].clientY : e.clientY;
+  return { x: (cx - r.left) * sx, y: (cy - r.top) * sy };
+}
+
+// ══════════════════════════════════════════════════
+// TEMPLATE MATCHING (NCC)
+// ══════════════════════════════════════════════════
+function toGray(imgData) {
+  const d = imgData.data, n = imgData.width * imgData.height;
+  const g = new Float32Array(n);
+  for (let i = 0; i < n; i++)
+    g[i] = 0.299*d[i*4] + 0.587*d[i*4+1] + 0.114*d[i*4+2];
+  return { data: g, width: imgData.width, height: imgData.height };
+}
+
+function ncc(source, tmpl) {
+  const {data:src, width:sw, height:sh} = source;
+  const {data:tpl, width:tw, height:th} = tmpl;
+  if (sw < tw || sh < th) return {score:0, x:0, y:0};
+
+  const n = tw * th;
+  let tSum = 0, tVar = 0;
+  for (let i = 0; i < n; i++) tSum += tpl[i];
+  const tMean = tSum / n;
+  for (let i = 0; i < n; i++) tVar += (tpl[i]-tMean)**2;
+  const tStd = Math.sqrt(tVar/n);
+  if (tStd < 1) return {score:0, x:0, y:0};
+
+  let best = -1, bx = 0, by = 0;
+  const step = 2; // stride for speed
+
+  for (let y = 0; y <= sh-th; y += step) {
+    for (let x = 0; x <= sw-tw; x += step) {
+      let ss = 0, ss2 = 0, st = 0;
+      for (let ty = 0; ty < th; ty++) {
+        const sr = (y+ty)*sw + x;
+        const tr = ty*tw;
+        for (let tx = 0; tx < tw; tx++) ss += src[sr+tx];
+      }
+      const sm = ss / n;
+      for (let ty = 0; ty < th; ty++) {
+        const sr = (y+ty)*sw + x;
+        const tr = ty*tw;
+        for (let tx = 0; tx < tw; tx++) {
+          const sv = src[sr+tx]-sm, tv = tpl[tr+tx]-tMean;
+          ss2 += sv*sv; st += sv*tv;
+        }
+      }
+      const sStd = Math.sqrt(ss2/n);
+      const sc = sStd > 0.5 ? (st/n)/(sStd*tStd) : 0;
+      if (sc > best) { best = sc; bx = x; by = y; }
+    }
+  }
+  return { score: Math.max(0, best), x: bx, y: by };
+}
+
+// ══════════════════════════════════════════════════
+// ZONE MAPPING
+// ══════════════════════════════════════════════════
+function getZone(px, py, mw, mh) {
+  const col = px/mw, row = py/mh;
+  if (row < 0.20) return col < 0.4 ? '탑 라인 (블루)' : col > 0.6 ? '탑 라인 (레드)' : '탑';
+  if (row < 0.42) return col < 0.28 ? '블루팀 정글 상단' : col > 0.72 ? '레드팀 정글 상단' : '미드 상단';
+  if (row < 0.58) return col < 0.25 ? '블루팀 정글' : col > 0.75 ? '레드팀 정글' : '미드 라인';
+  if (row < 0.80) return col < 0.28 ? '블루팀 정글 하단' : col > 0.72 ? '레드팀 정글 하단' : '미드 하단';
+  return col < 0.4 ? '봇 라인 (블루)' : col > 0.6 ? '봇 라인 (레드)' : '봇 라인';
+}
+
+// ══════════════════════════════════════════════════
+// DETECTION LOOP
+// ══════════════════════════════════════════════════
+function startDetect() {
+  if (!minimapRect) { flash('먼저 미니맵 영역을 설정하세요 →  🗺 미니맵 설정', 'warn'); return; }
+  if (!selected.length) { flash('챔피언을 먼저 선택하세요', 'warn'); return; }
+
+  detecting = true;
+  document.getElementById('cam-view').classList.add('scanning');
+  const bd = document.getElementById('btn-detect');
+  bd.textContent = '⏹ 탐지 중지';
+  bd.className = 'btn stop';
+  setStatus('탐지중', 'active');
+  if (debugOn) document.getElementById('score-bars').style.display = 'block';
+
+  runDetect(); // immediate first run
+  detTimer = setInterval(runDetect, 550);
+}
+
+function stopDetect() {
+  detecting = false;
+  clearInterval(detTimer);
+  document.getElementById('cam-view').classList.remove('scanning');
+  const bd = document.getElementById('btn-detect');
+  bd.textContent = '▶ 탐지 시작';
+  bd.className = 'btn go';
+  document.getElementById('score-bars').style.display = 'none';
+  document.getElementById('zone-lbl').className = 'zone-label';
+  if (stream) setStatus('카메라 ON', '');
+}
+
+function runDetect() {
+  if (!minimapRect || !stream) return;
+  const {x,y,w,h} = minimapRect;
+  const mapImgData = ctx.getImageData(x, y, w, h);
+
+  // Optionally downscale for speed
+  let source, scX = 1, scY = 1;
+  const maxDim = 160;
+  if (w > maxDim || h > maxDim) {
+    const sc = maxDim / Math.max(w, h);
+    const sw2 = Math.round(w*sc), sh2 = Math.round(h*sc);
+    const tc2 = document.createElement('canvas');
+    tc2.width = w; tc2.height = h;
+    tc2.getContext('2d').putImageData(mapImgData, 0, 0);
+    const sc2 = document.createElement('canvas');
+    sc2.width = sw2; sc2.height = sh2;
+    sc2.getContext('2d').drawImage(tc2, 0, 0, sw2, sh2);
+    source = toGray(sc2.getContext('2d').getImageData(0,0,sw2,sh2));
+    scX = w/sw2; scY = h/sh2;
+  } else {
+    source = toGray(mapImgData);
+  }
+
+  for (const champ of selected) {
+    // Re-make template if size changed
+    if (!champ.template || champ.template.width !== tplSize) {
+      if (champ.img) champ.template = makeTemplate(champ.img);
+      else continue;
+    }
+    const res = ncc(source, champ.template);
+    champ.score = res.score;
+    champ.dx = res.x * scX;
+    champ.dy = res.y * scY;
+
+    if (res.score >= thresh) {
+      // Draw detection box on canvas
+      const bx = x + champ.dx, by = y + champ.dy;
+      const bw = tplSize * scX, bh = tplSize * scY;
+      ctx.strokeStyle = '#e84057';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+      ctx.strokeRect(bx, by, bw, bh);
+      ctx.fillStyle = 'rgba(232,64,87,0.75)';
+      const lw = ctx.measureText(champ.korName).width + 8;
+      ctx.fillRect(bx, by-16, lw, 16);
+      ctx.fillStyle = '#fff';
+      ctx.font = '11px "Share Tech Mono",monospace';
+      ctx.fillText(champ.korName, bx+4, by-4);
+
+      if (canAlert(champ.id)) {
+        const zone = getZone(champ.dx, champ.dy, w, h);
+        doAlert(champ, zone, res.score);
+      }
+    }
+  }
+  if (debugOn) updateScoreBars();
+}
+
+// ══════════════════════════════════════════════════
+// ALERT
+// ══════════════════════════════════════════════════
+function canAlert(id) {
+  const now = Date.now();
+  if (!lastAlerts[id] || now - lastAlerts[id] > coolMs) {
+    lastAlerts[id] = now;
+    return true;
+  }
+  return false;
+}
+
+function doAlert(champ, zone, score) {
+  const msg = `${champ.korName} ${zone} 발견!`;
+
+  // TTS
+  if (ttsOn && 'speechSynthesis' in window) {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(msg);
+    u.lang = 'ko-KR';
+    u.rate = 1.1;
+    const voices = speechSynthesis.getVoices();
+    const kv = voices.find(v => v.lang.startsWith('ko'));
+    if (kv) u.voice = kv;
+    speechSynthesis.speak(u);
+  }
+
+  // Flash
+  flash('⚠  ' + msg, 'alert');
+
+  // Zone label
+  const zl = document.getElementById('zone-lbl');
+  zl.textContent = zone;
+  zl.className = 'zone-label show';
+  setTimeout(() => zl.className = 'zone-label', 4000);
+
+  // Status
+  setStatus('⚠ 탐지됨!', 'alert');
+  setTimeout(() => { if (detecting) setStatus('탐지중','active'); }, 3500);
+
+  // Log
+  addLog(champ, zone, score);
+}
+
+function flash(msg, type = 'alert') {
+  const f = document.getElementById('flash');
+  f.textContent = msg;
+  f.style.background = type === 'warn'
+    ? 'rgba(160,100,0,0.92)'
+    : 'rgba(232,64,87,0.92)';
+  f.classList.add('show');
+  clearTimeout(flash._t);
+  flash._t = setTimeout(() => f.classList.remove('show'), 3200);
+}
+
+function addLog(champ, zone, score) {
+  const log = document.getElementById('alert-log');
+  const empty = log.querySelector('.log-empty');
+  if (empty) empty.remove();
+
+  const now = new Date();
+  const t = [now.getHours(), now.getMinutes(), now.getSeconds()]
+    .map(n => String(n).padStart(2,'0')).join(':');
+
+  const e = document.createElement('div');
+  e.className = 'log-entry fresh';
+  e.innerHTML = `
+    <span class="log-time">${t}</span>
+    <img class="log-icon" src="${ddImg(champ.id)}" alt="${champ.korName}" onerror="this.style.display='none'">
+    <span class="log-champ">${champ.korName}</span>
+    <span class="log-zone">&mdash; ${zone}</span>
+    <span class="log-score">${Math.round(score*100)}%</span>`;
+  log.insertBefore(e, log.firstChild);
+  setTimeout(() => e.classList.remove('fresh'), 2000);
+  while (log.children.length > 60) log.lastChild.remove();
+}
+
+function clearLog() {
+  document.getElementById('alert-log').innerHTML =
+    '<div class="log-empty">탐지가 시작되면<br>여기에 알림이 표시됩니다</div>';
+}
+
+// ══════════════════════════════════════════════════
+// SCORE BARS
+// ══════════════════════════════════════════════════
+function updateScoreBars() {
+  const list = document.getElementById('sbar-list');
+  if (!selected.length) { list.innerHTML = ''; return; }
+  list.innerHTML = selected.map(c => {
+    const pct = Math.round((c.score||0)*100);
+    const clr = pct >= thresh*100 ? 'var(--red)' : pct > 40 ? 'var(--gold)' : 'var(--border2)';
+    return `<div class="sbar-row">
+      <div class="sbar-name">${c.korName}</div>
+      <div class="sbar-track"><div class="sbar-fill" style="width:${pct}%;background:${clr}"></div></div>
+      <div class="sbar-val" style="color:${clr}">${pct}%</div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════
+// STATUS
+// ══════════════════════════════════════════════════
+function setStatus(txt, type) {
+  document.getElementById('badge-text').textContent = txt;
+  document.getElementById('badge').className = 'badge' + (type ? ' '+type : '');
+}
+
+// ══════════════════════════════════════════════════
+// EVENTS
+// ══════════════════════════════════════════════════
+function bindEvents() {
+  // Camera btn
+  document.getElementById('btn-cam').addEventListener('click', () => {
+    stream ? stopCam() : startCam();
+  });
+
+  // Setup btn
+  document.getElementById('btn-setup').addEventListener('click', () => {
+    setupMode ? exitSetup() : enterSetup();
+  });
+
+  // Detect btn
+  document.getElementById('btn-detect').addEventListener('click', () => {
+    detecting ? stopDetect() : startDetect();
+  });
+
+  // Search
+  document.getElementById('search').addEventListener('input', e => {
+    const q = e.target.value.trim().toLowerCase();
+    renderGrid(q ? allChamps.filter(c =>
+      c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)
+    ) : allChamps);
+  });
+
+  // Sliders
+  document.getElementById('s-thresh').addEventListener('input', e => {
+    thresh = e.target.value/100;
+    document.getElementById('v-thresh').textContent = thresh.toFixed(2);
+  });
+  document.getElementById('s-tsize').addEventListener('input', e => {
+    tplSize = parseInt(e.target.value);
+    document.getElementById('v-tsize').textContent = tplSize+'px';
+    selected.forEach(c => { if (c.img) c.template = makeTemplate(c.img); });
+  });
+  document.getElementById('s-cool').addEventListener('input', e => {
+    coolMs = parseInt(e.target.value)*1000;
+    document.getElementById('v-cool').textContent = e.target.value+'s';
+  });
+  document.getElementById('s-tts').addEventListener('change', e => { ttsOn = e.target.checked; });
+  document.getElementById('s-debug').addEventListener('change', e => {
+    debugOn = e.target.checked;
+    document.getElementById('score-bars').style.display = (debugOn && detecting) ? 'block' : 'none';
+  });
+
+  // Canvas drag (setup mode)
+  const onStart = e => {
+    if (!setupMode) return;
+    const p = canvasXY(e);
+    drag = { sx: p.x, sy: p.y };
+  };
+  const onMove = e => {
+    if (!setupMode || !drag) return;
+    const p = canvasXY(e);
+    drag.cx = p.x; drag.cy = p.y;
+  };
+  const onEnd = e => {
+    if (!setupMode || !drag?.cx) return;
+    const rx = Math.round(Math.min(drag.sx,drag.cx));
+    const ry = Math.round(Math.min(drag.sy,drag.cy));
+    const rw = Math.round(Math.abs(drag.cx-drag.sx));
+    const rh = Math.round(Math.abs(drag.cy-drag.sy));
+    drag = null;
+    if (rw > 20 && rh > 20) {
+      minimapRect = {x:rx, y:ry, w:rw, h:rh};
+      exitSetup();
+      flash(`미니맵 영역 설정됨 (${rw}×${rh}px)`, 'warn');
+    }
+  };
+
+  canvas.addEventListener('mousedown', onStart);
+  canvas.addEventListener('mousemove', onMove);
+  canvas.addEventListener('mouseup', onEnd);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); onStart(e); }, {passive:false});
+  canvas.addEventListener('touchmove',  e => { e.preventDefault(); onMove(e);  }, {passive:false});
+  canvas.addEventListener('touchend',   e => { e.preventDefault(); onEnd(e);   }, {passive:false});
+
+  // Pre-warm TTS voices
+  if ('speechSynthesis' in window) {
+    speechSynthesis.getVoices();
+    speechSynthesis.onvoiceschanged = () => {};
+  }
+}
+
+// ── GO ──
+init();
+</script>
+</body>
+</html>
